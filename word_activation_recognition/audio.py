@@ -52,7 +52,8 @@ Continuously classifies audio samples from the microphone, yielding results
 """
 
 def classify_audio():
-
+    channels = 1
+    
     inference_overlap_ratio = 0.1
     buffer_size_secs = 2.0
     buffer_write_size_secs = 0.1
