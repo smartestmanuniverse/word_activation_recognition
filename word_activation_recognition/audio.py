@@ -48,9 +48,6 @@ def classify_audio():
     else:
         labels = utils.read_labels_from_metadata(model)
 
-    print('Say one of the following:')
-    for value in labels.values():
-        print('  %s' % value)
 
     interpreter = tflite.Interpreter(model_path=model)
     interpreter.allocate_tensors()
