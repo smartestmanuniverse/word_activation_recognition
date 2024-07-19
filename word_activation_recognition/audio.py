@@ -44,7 +44,7 @@ def classify_audio():
     labels_file = 'labels/star_trek_activation_phrase_v2.txt'
 
     # Paramètres du flux audio
-    sample_rate = 16000  # Fréquence d'échantillonnage
+    sample_rate_hz = 16000  # Fréquence d'échantillonnage
     block_size = 1024  # Taille des blocs d'échantillons
 
     #sample_rate_hz, channels = model_audio_properties(model)
