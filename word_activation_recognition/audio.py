@@ -20,7 +20,7 @@ def read_labels_file(filename):
 
 from tflite_support import metadata
 
-from . import ring_buffer
+import ring_buffer
 
 
 # Function `classify_audio` is used to classify audio data using a TFLite model.
