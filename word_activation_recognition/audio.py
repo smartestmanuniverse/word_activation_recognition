@@ -34,6 +34,12 @@ Continuously classifies audio samples from the microphone, yielding results
 """
 
 def classify_audio():
+
+    inference_overlap_ratio = 0.1
+    buffer_size_secs = 2.0
+    buffer_write_size_secs = 0.1
+    audio_device_index = None
+
     model = 'models/star_trek_activation_phrase_v2.tflite'
     labels_file = 'labels/star_trek_activation_phrase_v2.txt'
 
@@ -48,6 +54,18 @@ def classify_audio():
     else:
         labels = utils.read_labels_from_metadata(model)
 
+    if not model:
+        raise ValueError('model must be specified')
+
+    if buffer_size_secs <= 0.0:
+        raise ValueError('buffer_size_secs must be positive')
+
+    if buffer_write_size_secs <= 0.0:
+        raise ValueError('buffer_write_size_secs must be positive')
+
+    if inference_overlap_ratio < 0.0 or \
+       inference_overlap_ratio >= 1.0:
+        raise ValueError('inference_overlap_ratio must be in [0.0 .. 1.0)')
 
     interpreter = tflite.Interpreter(model_path=model)
     interpreter.allocate_tensors()
