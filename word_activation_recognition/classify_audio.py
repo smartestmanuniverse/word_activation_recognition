@@ -1,11 +1,13 @@
 #coding: utf-8
 
-#import argparse
 from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
 from audio import AudioClassifier
+from time import sleep
+
 
 def activation_callback():
     print('Activation detected')
+    sleep(90)
     print('Bye Bye !')
     exit(0)
 

@@ -1,7 +1,5 @@
 #coding: utf-8
-
 import threading
-
 class Overflow(Exception):
     pass
 
