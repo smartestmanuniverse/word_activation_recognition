@@ -23,6 +23,22 @@ from tflite_support import metadata
 import ring_buffer
 
 
+@contextlib.contextmanager
+def pyaudio_stream(*args, **kwargs):
+    """Context manager for the PyAudio stream."""
+    audio = pyaudio.PyAudio()
+    try:
+        stream = audio.open(*args, **kwargs)
+        try:
+            yield stream
+        finally:
+            stream.stop_stream()
+            stream.close()
+    finally:
+        audio.terminate()
+
+
+
 # Function `classify_audio` is used to classify audio data using a TFLite model.
 """
 Continuously classifies audio samples from the microphone, yielding results
