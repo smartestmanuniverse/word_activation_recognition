@@ -1,4 +1,6 @@
 tflite-runtime
+tflite-support
+pycoral
 pyaudio
 numpy<2.0.0
 librosa
