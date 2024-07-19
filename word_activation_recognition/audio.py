@@ -11,7 +11,7 @@ import threading
 import pyaudio
 import tflite_runtime.interpreter as tflite
 
-from pycoral.utils import dataset
+#from pycoral.utils import dataset
 from tflite_support import metadata
 
 
@@ -29,6 +29,7 @@ Continuously classifies audio samples from the microphone, yielding results
 
 def classify_audio():
     model = 'models/star_trek_activation_phrase_v2.tflite'
+    labels_file = 'labels/star_trek_activation_phrase_v2.txt'
 
     # Paramètres du flux audio
     sample_rate = 16000  # Fréquence d'échantillonnage
