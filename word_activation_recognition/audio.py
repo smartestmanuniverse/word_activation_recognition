@@ -12,6 +12,12 @@ import pyaudio
 import tflite_runtime.interpreter as tflite
 
 #from pycoral.utils import dataset
+import pandas as pd
+def read_labels_file(filename):
+    # Charger un fichier CSV comme exemple
+    dataset = pd.read_csv(f"{filename}")
+    return dataset
+
 from tflite_support import metadata
 
 
@@ -38,7 +44,7 @@ def classify_audio():
     #sample_rate_hz, channels = model_audio_properties(model)
 
     if labels_file is not None:
-        labels = dataset.read_label_file(labels_file)
+        labels = read_labels_file(labels_file)
     else:
         labels = utils.read_labels_from_metadata(model)
 
