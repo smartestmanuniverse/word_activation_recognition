@@ -1,20 +1,37 @@
 #coding: utf-8
 
-import argparse
-from audio import classify_audio
+#import argparse
+from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
+from audio import AudioClassifier
 
 
-def handle_results(label, score):
-    print('CALLBACK: ', label, '=>', score)
-    return True  # keep listening
 
+def run():
+    MODEL_FILE = Files_WordRecognition_tflite.model
+    LABELS_FILE = Files_WordRecognition_tflite.labels_file
+
+    classifier = AudioClassifier(model=MODEL_FILE, labels_file=LABELS_FILE)
+
+    while True:
+        result = classifier.next(block=True)
+        if result is not None:
+            label, score = result
+            print('Classification:', label, 'score:', score)
+    
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('model_file', type=str)
-    args = parser.parse_args()
+    #parser = argparse.ArgumentParser()
+    #parser.add_argument('model_file', type=str)
+    #args = parser.parse_args()
 
-    classify_audio(model=args.model_file, callback=handle_results)
+    try:
+        run()
+    except KeyboardInterrupt:
+        print("Interruption par l'utilisateur")
+        exit(0)
+    except Exception as e:
+        print(e)
+        exit(1)
 
 if __name__ == '__main__':
     main()

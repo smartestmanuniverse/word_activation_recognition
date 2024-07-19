@@ -3,25 +3,80 @@
 import contextlib
 import json
 import numpy as np
-import os
 import queue
 import sys
 import threading
+import re
+import json
 
-import pyaudio
 import tflite_runtime.interpreter as tflite
-
-#from pycoral.utils import dataset
-import pandas as pd
-def read_labels_file(filename):
-    # Charger un fichier CSV comme exemple
-    dataset = pd.read_csv(f"{filename}")
-    return dataset
-
 from tflite_support import metadata
+import pyaudio
+import pandas as pd
 
 import ring_buffer
 
+from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
+
+import librosa
+
+
+def _associcated_labels_file(metadata_json):
+    for ot in metadata_json['subgraph_metadata'][0]['output_tensor_metadata']:
+      if 'associated_files' in ot:
+        for af in ot['associated_files']:
+          if af['type'] in ('TENSOR_AXIS_LABELS', 'TENSOR_VALUE_LABELS'):
+            return af['name']
+    raise ValueError('Model metadata does not have associated labels file')
+
+
+def read_labels_from_metadata(model):
+    """Read labels from the model file metadata.
+
+    Args:
+        model (str): Path to the ``.tflite`` file.
+    Returns:
+        A dictionary of (int, string), mapping label ids to text labels.
+    """
+    displayer = metadata.MetadataDisplayer.with_model_file(model)
+    metadata_json = json.loads(displayer.get_metadata_json())
+    labels_file = _associcated_labels_file(metadata_json)
+    labels = displayer.get_associated_file_buffer(labels_file).decode()
+    return {i: label for i, label in enumerate(labels.splitlines())}
+
+
+
+def read_labels_file(filepath):
+    """ 
+    
+    Lire les labels depuis un fichier texte et retourner cela comme un dictionnaire
+
+    ----------
+
+    Cette fonction supporte les fichiers de labels avec les formats suivants:
+
+    - Chaques ligne contient un id et la description separe par un espace ou une virgule
+    ex: ``0:cat`` or ``0 cat``.
+    - Chaques ligne contient seulement la description. Les ids sont assignes automatiquement baser sur le numero de ligne. 
+
+    ----------
+
+    Arguments:
+    - filepath (str): Le chemin vers le fichier de labels.
+
+    Sortie:
+    - dictionnaire de (int, str): Les labels avec les ids comme cles et les descriptions comme valeurs.
+    """
+    with open(filepath, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    ret = {}
+    for num_row, content in enumerate(lines):
+        pair = re.split(r'[:\s]+', content.strip(), maxsplit=1)
+        if len(pair) == 2 and pair[0].strip().isdigit():
+            ret[int(pair[0])] = pair[1].strip()
+        else:
+            ret[num_row] = content.strip()
+    return ret 
 
 @contextlib.contextmanager
 def pyaudio_stream(*args, **kwargs):
@@ -37,21 +92,53 @@ def pyaudio_stream(*args, **kwargs):
     finally:
         audio.terminate()
 
+def model_audio_properties(model_file):
+    """
+    Returns the audio sample rate and number of channels that must be used with
+    the given model (as a tuple in that order).
+    """
+    displayer = metadata.MetadataDisplayer.with_model_file(model_file)
+    metadata_json = json.loads(displayer.get_metadata_json())
+    if metadata_json['name'] != 'AudioClassifier':
+        raise ValueError('Model must be an audio classifier')
+    props = metadata_json['subgraph_metadata'][0]['input_tensor_metadata'][0]['content']['content_properties']
+    return int(props['sample_rate']), int(props['channels'])
 
 
-# Function `classify_audio` is used to classify audio data using a TFLite model.
-"""
-Continuously classifies audio samples from the microphone, yielding results
-    to your own callback function.
+def activation_callback(label, score):
+    print(label, '=>', score)
+    print('Activation detected')
+    exit(0)
 
-    inference performed. Although the audio sample size is fixed based on the
-    model input size, you can adjust the rate of inference with
-    ``inference_overlap_ratio``. A larger overlap means the model runs inference
-    more frequently but with larger amounts of sample data shared between
-    inferences, which can result in duplicate results.
-"""
+def activation_phrase_detection(label, score):
+    if label == labels_activation_phrase.label_2:
+        print(f"{label} is detected...")
+        if score > labels_activation_phrase.min_score_label_2:
+            print(f"ok now the label '{label}' pass with the score of : '{score}'")
+            return True
+        else:
+            return False
+    else:
+        return False
+    return False
 
-def classify_audio():
+def classify_audio(model, callback,
+                   labels_file=None,
+                   inference_overlap_ratio=0.1,
+                   buffer_size_secs=2.0,
+                   buffer_write_size_secs=0.1,
+                   audio_device_index=None):
+    # Function `classify_audio` is used to classify audio data using a TFLite model.
+    """
+    Continuously classifies audio samples from the microphone, yielding results
+        to your own callback function.
+
+        inference performed. Although the audio sample size is fixed based on the
+        model input size, you can adjust the rate of inference with
+        ``inference_overlap_ratio``. A larger overlap means the model runs inference
+        more frequently but with larger amounts of sample data shared between
+        inferences, which can result in duplicate results.
+    """
     channels = 1
     
     inference_overlap_ratio = 0.1
@@ -59,19 +146,13 @@ def classify_audio():
     buffer_write_size_secs = 0.1
     audio_device_index = None
 
-    model = 'models/star_trek_activation_phrase_v2.tflite'
-    labels_file = 'labels/star_trek_activation_phrase_v2.txt'
-
-    # Paramètres du flux audio
-    sample_rate_hz = 16000  # Fréquence d'échantillonnage
-    block_size = 1024  # Taille des blocs d'échantillons
-
-    #sample_rate_hz, channels = model_audio_properties(model)
+    sample_rate_hz, channels = model_audio_properties(model)
 
     if labels_file is not None:
         labels = read_labels_file(labels_file)
     else:
-        labels = utils.read_labels_from_metadata(model)
+        labels = read_labels_from_metadata(model)
+
 
     if not model:
         raise ValueError('model must be specified')
@@ -107,23 +188,6 @@ def classify_audio():
         log_mel_spectrogram = librosa.power_to_db(mel_spectrogram)
         return log_mel_spectrogram.T
 
-    # # Fonction pour traiter le flux audio en temps réel
-    # def audio_callback(indata, frames, time, status):
-    #     nonlocal interpreter, input_details, output_details
-    #     if status:
-    #         print(status, flush=True)
-    #     # Prétraitement de l'audio
-    #     mel_spectrogram = preprocess_audio(indata[:, 0])
-    #     input_data = np.expand_dims(mel_spectrogram, axis=0).astype(np.float32)
-
-    #     # Faire une prédiction avec le modèle TFLite
-    #     interpreter.set_tensor(input_details[0]['index'], input_data)
-    #     interpreter.invoke()
-    #     output_data = interpreter.get_tensor(output_details[0]['index'])
-        
-    #     # Afficher le résultat de la prédiction
-    #     print("Résultat de la prédiction:", output_data, flush=True)
-
 
     ring_buffer_size = int(buffer_size_secs * sample_rate_hz)
     frames_per_buffer = int(buffer_write_size_secs * sample_rate_hz)
@@ -141,25 +205,91 @@ def classify_audio():
         return None, pyaudio.paContinue
 
 
-    try:
-        with pyaudio_stream(format=pyaudio.paFloat32,
-                            channels=channels,
-                            rate=sample_rate_hz,
-                            frames_per_buffer=frames_per_buffer,
-                            stream_callback=stream_callback,
-                            input=True,
-                            input_device_index=audio_device_index) as stream:
-            keep_listening = True
-            while keep_listening:
-                rb.read(waveform, remove_size=remove_size)
+    
+    with pyaudio_stream(format=pyaudio.paFloat32,
+                        channels=channels,
+                        rate=sample_rate_hz,
+                        frames_per_buffer=frames_per_buffer,
+                        stream_callback=stream_callback,
+                        input=True,
+                        input_device_index=audio_device_index) as stream:
+        keep_listening = True
+        while keep_listening:
+            rb.read(waveform, remove_size=remove_size)
+            # ###### Prétraitement de l'audio
+            interpreter.set_tensor(waveform_input_index, [waveform])
+            interpreter.invoke()
+            scores = interpreter.get_tensor(scores_output_index)
+            scores = np.mean(scores, axis=0)
+            prediction = np.argmax(scores)
+            keep_listening = callback(labels[prediction], scores[prediction])
 
-                interpreter.set_tensor(waveform_input_index, [waveform])
-                interpreter.invoke()
-                scores = interpreter.get_tensor(scores_output_index)
-                scores = np.mean(scores, axis=0)
-                prediction = np.argmax(scores)
-                keep_listening = callback(labels[prediction], scores[prediction])
-                
-    except KeyboardInterrupt:
-        print("Interruption par l'utilisateur")
-        exit(0)
+class AudioClassifier:
+    """Performs classifications with a speech classification model.
+
+    This is intended for situations where you want to write a loop in your code
+    that fetches new classification results in each iteration (by calling
+    :func:`next()`). If you instead want to receive a callback each time a new
+    classification is detected, instead use :func:`classify_audio()`.
+
+    Args:
+        model (str): Path to a ``.tflite`` file.
+        labels_file (str): Path to a labels file (required only if the model
+            does not include metadata labels). If provided, this overrides the
+            labels file provided in the model metadata.
+        inference_overlap_ratio (float): The amount of audio that should overlap
+            between each sample used for inference. May be 0.0 up to (but not
+            including) 1.0. For example, if set to 0.5 and the model takes a
+            one-second sample as input, the model will run an inference every
+            half second, or if set to 0, it will run once each second.
+        buffer_size_secs (float): The length of audio to hold in the audio
+            buffer.
+        buffer_write_size_secs (float): The length of audio to capture into the
+            buffer with each sampling from the microphone.
+        audio_device_index (int): The audio input device index to use.
+    """
+
+    def __init__(self, **kwargs):
+        self._queue = queue.Queue()
+        self._thread = threading.Thread(
+            target=classify_audio,
+            kwargs={'callback': self.handle_results, **kwargs},
+            daemon=True)
+        self._thread.start()
+
+    def _callback(self, label, score):
+        self._queue.put((label, score))
+        return True
+    
+    def handle_results(self, label, score):
+        label_, score_ = str(label), float(score)
+        print('CALLBACK: ', label_, '=>', score_)
+        print(f"{type(label_)} => {type(score_)}")
+
+        activation_detected = activation_phrase_detection(label_, score_)
+        print(activation_detected)
+        if activation_detected:
+            activation_callback(label_, score_)
+            return False 
+        return True
+
+    def next(self, block=True):
+        """
+        Returns a single speech classification.
+
+        Each time you call this, it pulls from a queue of recent
+        classifications. So even if there are many classifications in a short
+        period of time, this always returns them in the order received.
+
+        Args:
+            block (bool): Whether this function should block until the next
+                classification arrives (if there are no queued classifications).
+                If False, it always returns immediately and returns None if the
+                classification queue is empty.
+        """
+        try:
+            result = self._queue.get(block)
+            self._queue.task_done()
+            return result
+        except queue.Empty:
+            return None
