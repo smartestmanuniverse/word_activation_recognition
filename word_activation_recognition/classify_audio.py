@@ -4,13 +4,17 @@
 from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
 from audio import AudioClassifier
 
+def activation_callback():
+    print('Activation detected')
+    print('Bye Bye !')
+    exit(0)
 
 
 def run():
     MODEL_FILE = Files_WordRecognition_tflite.model
     LABELS_FILE = Files_WordRecognition_tflite.labels_file
 
-    classifier = AudioClassifier(model=MODEL_FILE, labels_file=LABELS_FILE)
+    classifier = AudioClassifier(callback_start_assistant=activation_callback ,model=MODEL_FILE, labels_file=LABELS_FILE)
 
     while True:
         result = classifier.next(block=True)

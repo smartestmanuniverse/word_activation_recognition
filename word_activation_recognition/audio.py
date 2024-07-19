@@ -19,6 +19,7 @@ import ring_buffer
 from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
 
 import librosa
+from multiprocessing import Process
 
 
 def _associcated_labels_file(metadata_json):
@@ -249,13 +250,15 @@ class AudioClassifier:
         audio_device_index (int): The audio input device index to use.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, callback_start_assistant, **kwargs):
         self._queue = queue.Queue()
         self._thread = threading.Thread(
             target=classify_audio,
             kwargs={'callback': self.handle_results, **kwargs},
             daemon=True)
         self._thread.start()
+        self._process_assistant = Process(target=callback_start_assistant, args=())
+        self.callback_start_assistant = callback_start_assistant
 
     def _callback(self, label, score):
         self._queue.put((label, score))
@@ -269,7 +272,11 @@ class AudioClassifier:
         activation_detected = activation_phrase_detection(label_, score_)
         print(activation_detected)
         if activation_detected:
-            activation_callback(label_, score_)
+            if not self._process_assistant.is_alive():
+                self._process_assistant = Process(target=self.callback_start_assistant, args=())
+                self._process_assistant.start()
+                self._process_assistant.join()
+            #activation_callback(label_, score_)
             return False 
         return True
 
