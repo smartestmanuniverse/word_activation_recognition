@@ -7,7 +7,7 @@ from time import sleep
 
 def activation_callback():
     print('Activation detected')
-    sleep(90)
+    sleep(20)
     print('Bye Bye !')
     exit(0)
 

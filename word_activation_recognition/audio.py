@@ -122,24 +122,30 @@ class AudioClassifier:
             buffer with each sampling from the microphone.
         audio_device_index (int): The audio input device index to use.
     """
-    def __init__(self, callback_start_assistant, **kwargs):
+    def __init__(self, callback_start_assistant, model, labels_file=None, inference_overlap_ratio=0.1,
+                 buffer_size_secs=2.0, buffer_write_size_secs=0.1, audio_device_index=None, **kwargs):
         self._queue = queue.Queue()
         self._stop_listening = threading.Event()
         self._thread = threading.Thread(
             target=self.classify_audio,
-            kwargs={'callback': self.handle_results, **kwargs},
+            kwargs={'callback': self.handle_results, 'model': model, 'labels_file': labels_file,
+                    'inference_overlap_ratio': inference_overlap_ratio, 'buffer_size_secs': buffer_size_secs,
+                    'buffer_write_size_secs': buffer_write_size_secs, 'audio_device_index': audio_device_index, **kwargs},
             daemon=True)
         self._thread.start()
         self._process_assistant = None
         self.callback_start_assistant = callback_start_assistant
         self._audio_stream = None
+        self.model = model
+        self.labels_file = labels_file
+        self.inference_overlap_ratio = inference_overlap_ratio
+        self.buffer_size_secs = buffer_size_secs
+        self.buffer_write_size_secs = buffer_write_size_secs
+        self.audio_device_index = audio_device_index
+        self.kwargs = kwargs
 
-    def classify_audio(self, model, callback,
-                       labels_file=None,
-                       inference_overlap_ratio=0.1,
-                       buffer_size_secs=2.0,
-                       buffer_write_size_secs=0.1,
-                       audio_device_index=None):
+    def classify_audio(self, model, callback, labels_file=None, inference_overlap_ratio=0.1,
+                       buffer_size_secs=2.0, buffer_write_size_secs=0.1, audio_device_index=None):
         """
         Continuously classifies audio samples from the microphone, yielding results
         to your own callback function.
@@ -228,7 +234,9 @@ class AudioClassifier:
         self._stop_listening.clear()
         self._thread = threading.Thread(
             target=self.classify_audio,
-            kwargs={'callback': self.handle_results},
+            kwargs={'callback': self.handle_results, 'model': self.model, 'labels_file': self.labels_file,
+                    'inference_overlap_ratio': self.inference_overlap_ratio, 'buffer_size_secs': self.buffer_size_secs,
+                    'buffer_write_size_secs': self.buffer_write_size_secs, 'audio_device_index': self.audio_device_index, **self.kwargs},
             daemon=True)
         self._thread.start()
 
