@@ -122,7 +122,6 @@ class AudioClassifier:
             buffer with each sampling from the microphone.
         audio_device_index (int): The audio input device index to use.
     """
-
     def __init__(self, callback_start_assistant, **kwargs):
         self._queue = queue.Queue()
         self._stop_listening = threading.Event()
@@ -133,6 +132,7 @@ class AudioClassifier:
         self._thread.start()
         self._process_assistant = None
         self.callback_start_assistant = callback_start_assistant
+        self._audio_stream = None
 
     def classify_audio(self, model, callback,
                        labels_file=None,
@@ -166,17 +166,14 @@ class AudioClassifier:
         interpreter = tflite.Interpreter(model_path=model)
         interpreter.allocate_tensors()
 
-        # Input tensor
         input_details = interpreter.get_input_details()
         waveform_input_index = input_details[0]['index']
         _, num_audio_frames = input_details[0]['shape']
         waveform = np.zeros(num_audio_frames, dtype=np.float32)
 
-        # Output tensor
         output_details = interpreter.get_output_details()
         scores_output_index = output_details[0]['index']
 
-        # Fonction de prétraitement pour convertir les données audio en Mel spectrogram
         def preprocess_audio(audio_data, sr=16000):
             mel_spectrogram = librosa.feature.melspectrogram(y=audio_data, sr=sr, n_mels=128)
             log_mel_spectrogram = librosa.power_to_db(mel_spectrogram)
@@ -203,12 +200,11 @@ class AudioClassifier:
                             stream_callback=stream_callback,
                             input=True,
                             input_device_index=audio_device_index) as stream:
+            self._audio_stream = stream
             keep_listening = True
             while keep_listening:
                 while not self._stop_listening.is_set():
-                    # Lecture de l'audio
                     rb.read(waveform, remove_size=remove_size)
-                    # Prétraitement de l'audio
                     interpreter.set_tensor(waveform_input_index, [waveform])
                     interpreter.invoke()
                     scores = interpreter.get_tensor(scores_output_index)
@@ -216,13 +212,25 @@ class AudioClassifier:
                     prediction = np.argmax(scores)
                     keep_listening = callback(labels[prediction], scores[prediction])
 
+    def close_audio_stream(self):
+        if self._audio_stream is not None:
+            self._audio_stream.stop_stream()
+            self._audio_stream.close()
+            self._audio_stream = None
+
     def stop_listening(self):
         """Méthode pour arrêter l'écoute."""
         self._stop_listening.set()
+        self.close_audio_stream()
 
     def resume_listening(self):
         """Méthode pour reprendre l'écoute."""
         self._stop_listening.clear()
+        self._thread = threading.Thread(
+            target=self.classify_audio,
+            kwargs={'callback': self.handle_results},
+            daemon=True)
+        self._thread.start()
 
     def handle_results(self, label, score):
         label_, score_ = str(label), float(score)

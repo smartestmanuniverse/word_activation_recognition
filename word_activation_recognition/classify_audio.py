@@ -16,20 +16,15 @@ def run():
     MODEL_FILE = Files_WordRecognition_tflite.model
     LABELS_FILE = Files_WordRecognition_tflite.labels_file
 
-    classifier = AudioClassifier(callback_start_assistant=activation_callback ,model=MODEL_FILE, labels_file=LABELS_FILE)
+    classifier = AudioClassifier(callback_start_assistant=activation_callback, model=MODEL_FILE, labels_file=LABELS_FILE)
 
     while True:
         result = classifier.next(block=True)
         if result is not None:
             label, score = result
             print('Classification:', label, 'score:', score)
-    
 
 def main():
-    #parser = argparse.ArgumentParser()
-    #parser.add_argument('model_file', type=str)
-    #args = parser.parse_args()
-
     try:
         run()
     except KeyboardInterrupt:
@@ -41,3 +36,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
