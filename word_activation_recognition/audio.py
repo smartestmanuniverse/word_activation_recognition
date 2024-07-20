@@ -125,13 +125,13 @@ class AudioClassifier:
 
     def __init__(self, callback_start_assistant, **kwargs):
         self._queue = queue.Queue()
-        self._stop_listening = threading.Event()  # Ajout d'un drapeau pour contrôler l'écoute
+        self._stop_listening = threading.Event()
         self._thread = threading.Thread(
             target=self.classify_audio,
             kwargs={'callback': self.handle_results, **kwargs},
             daemon=True)
         self._thread.start()
-        self._process_assistant = Process(target=callback_start_assistant, args=())
+        self._process_assistant = None
         self.callback_start_assistant = callback_start_assistant
 
     def classify_audio(self, model, callback,
@@ -232,7 +232,7 @@ class AudioClassifier:
         activation_detected = activation_phrase_detection(label_, score_)
         print(activation_detected)
         if activation_detected:
-            if not self._process_assistant.is_alive():
+            if self._process_assistant is None or not self._process_assistant.is_alive():
                 self.stop_listening()
                 self._process_assistant = Process(target=self.callback_start_assistant, args=())
                 self._process_assistant.start()
