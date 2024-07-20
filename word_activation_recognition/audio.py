@@ -1,33 +1,27 @@
 #coding: utf-8
 
+import queue
+import sys
 import contextlib
 import json
 import numpy as np
-import queue
-import sys
 import threading
 import re
-import json
-
-import tflite_runtime.interpreter as tflite
-from tflite_support import metadata
 import pyaudio
-import pandas as pd
-
 import ring_buffer
-
-from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
-
+from tflite_support import metadata
+import tflite_runtime.interpreter as tflite
 import librosa
 from multiprocessing import Process
+from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
 
 
-def _associcated_labels_file(metadata_json):
+def _associated_labels_file(metadata_json):
     for ot in metadata_json['subgraph_metadata'][0]['output_tensor_metadata']:
-      if 'associated_files' in ot:
-        for af in ot['associated_files']:
-          if af['type'] in ('TENSOR_AXIS_LABELS', 'TENSOR_VALUE_LABELS'):
-            return af['name']
+        if 'associated_files' in ot:
+            for af in ot['associated_files']:
+                if af['type'] in ('TENSOR_AXIS_LABELS', 'TENSOR_VALUE_LABELS'):
+                    return af['name']
     raise ValueError('Model metadata does not have associated labels file')
 
 
@@ -41,32 +35,18 @@ def read_labels_from_metadata(model):
     """
     displayer = metadata.MetadataDisplayer.with_model_file(model)
     metadata_json = json.loads(displayer.get_metadata_json())
-    labels_file = _associcated_labels_file(metadata_json)
+    labels_file = _associated_labels_file(metadata_json)
     labels = displayer.get_associated_file_buffer(labels_file).decode()
     return {i: label for i, label in enumerate(labels.splitlines())}
 
 
-
 def read_labels_file(filepath):
     """ 
-    
-    Lire les labels depuis un fichier texte et retourner cela comme un dictionnaire
-
-    ----------
-
-    Cette fonction supporte les fichiers de labels avec les formats suivants:
-
-    - Chaques ligne contient un id et la description separe par un espace ou une virgule
-    ex: ``0:cat`` or ``0 cat``.
-    - Chaques ligne contient seulement la description. Les ids sont assignes automatiquement baser sur le numero de ligne. 
-
-    ----------
-
+    Lire les labels depuis un fichier texte et retourner cela comme un dictionnaire.
     Arguments:
     - filepath (str): Le chemin vers le fichier de labels.
-
     Sortie:
-    - dictionnaire de (int, str): Les labels avec les ids comme cles et les descriptions comme valeurs.
+    - dictionnaire de (int, str): Les labels avec les ids comme clés et les descriptions comme valeurs.
     """
     with open(filepath, 'r', encoding='utf-8') as f:
         lines = f.readlines()
@@ -78,6 +58,7 @@ def read_labels_file(filepath):
         else:
             ret[num_row] = content.strip()
     return ret 
+
 
 @contextlib.contextmanager
 def pyaudio_stream(*args, **kwargs):
@@ -92,6 +73,7 @@ def pyaudio_stream(*args, **kwargs):
             stream.close()
     finally:
         audio.terminate()
+
 
 def model_audio_properties(model_file):
     """
@@ -111,26 +93,18 @@ def activation_callback(label, score):
     print('Activation detected')
     exit(0)
 
+
 def activation_phrase_detection(label, score):
     if label == labels_activation_phrase.label_2:
         print(f"{label} is detected...")
         if score > labels_activation_phrase.min_score_label_2:
             print(f"ok now the label '{label}' pass with the score of : '{score}'")
             return True
-        else:
-            return False
-    else:
-        return False
     return False
 
 
 class AudioClassifier:
     """Performs classifications with a speech classification model.
-
-    This is intended for situations where you want to write a loop in your code
-    that fetches new classification results in each iteration (by calling
-    :func:`next()`). If you instead want to receive a callback each time a new
-    classification is detected, instead use :func:`classify_audio()`.
 
     Args:
         model (str): Path to a ``.tflite`` file.
@@ -161,37 +135,21 @@ class AudioClassifier:
         self.callback_start_assistant = callback_start_assistant
 
     def classify_audio(self, model, callback,
-                    labels_file=None,
-                    inference_overlap_ratio=0.1,
-                    buffer_size_secs=2.0,
-                    buffer_write_size_secs=0.1,
-                    audio_device_index=None):
-                    #stop_listening_flag=None):
-        # Function `classify_audio` is used to classify audio data using a TFLite model.
+                       labels_file=None,
+                       inference_overlap_ratio=0.1,
+                       buffer_size_secs=2.0,
+                       buffer_write_size_secs=0.1,
+                       audio_device_index=None):
         """
         Continuously classifies audio samples from the microphone, yielding results
-            to your own callback function.
-
-            inference performed. Although the audio sample size is fixed based on the
-            model input size, you can adjust the rate of inference with
-            ``inference_overlap_ratio``. A larger overlap means the model runs inference
-            more frequently but with larger amounts of sample data shared between
-            inferences, which can result in duplicate results.
+        to your own callback function.
         """
-        channels = 1
-        
-        inference_overlap_ratio = 0.1
-        buffer_size_secs = 2.0
-        buffer_write_size_secs = 0.1
-        audio_device_index = None
-
         sample_rate_hz, channels = model_audio_properties(model)
 
         if labels_file is not None:
             labels = read_labels_file(labels_file)
         else:
             labels = read_labels_from_metadata(model)
-
 
         if not model:
             raise ValueError('model must be specified')
@@ -202,8 +160,7 @@ class AudioClassifier:
         if buffer_write_size_secs <= 0.0:
             raise ValueError('buffer_write_size_secs must be positive')
 
-        if inference_overlap_ratio < 0.0 or \
-        inference_overlap_ratio >= 1.0:
+        if inference_overlap_ratio < 0.0 or inference_overlap_ratio >= 1.0:
             raise ValueError('inference_overlap_ratio must be in [0.0 .. 1.0)')
 
         interpreter = tflite.Interpreter(model_path=model)
@@ -219,14 +176,11 @@ class AudioClassifier:
         output_details = interpreter.get_output_details()
         scores_output_index = output_details[0]['index']
 
-
         # Fonction de prétraitement pour convertir les données audio en Mel spectrogram
         def preprocess_audio(audio_data, sr=16000):
-            nonlocal interpreter, input_details
             mel_spectrogram = librosa.feature.melspectrogram(y=audio_data, sr=sr, n_mels=128)
             log_mel_spectrogram = librosa.power_to_db(mel_spectrogram)
             return log_mel_spectrogram.T
-
 
         ring_buffer_size = int(buffer_size_secs * sample_rate_hz)
         frames_per_buffer = int(buffer_write_size_secs * sample_rate_hz)
@@ -240,11 +194,8 @@ class AudioClassifier:
                 rb.write(np.frombuffer(in_data, dtype=np.float32), block=False)
             except ring_buffer.Overflow:
                 print('WARNING: Dropping input audio buffer', file=sys.stderr)
-
             return None, pyaudio.paContinue
 
-
-        
         with pyaudio_stream(format=pyaudio.paFloat32,
                             channels=channels,
                             rate=sample_rate_hz,
@@ -255,16 +206,15 @@ class AudioClassifier:
             keep_listening = True
             while keep_listening:
                 while not self._stop_listening.is_set():
-                    # ###### Lecture de l'audio
+                    # Lecture de l'audio
                     rb.read(waveform, remove_size=remove_size)
-                    # ###### Prétraitement de l'audio
+                    # Prétraitement de l'audio
                     interpreter.set_tensor(waveform_input_index, [waveform])
                     interpreter.invoke()
                     scores = interpreter.get_tensor(scores_output_index)
                     scores = np.mean(scores, axis=0)
                     prediction = np.argmax(scores)
                     keep_listening = callback(labels[prediction], scores[prediction])
-
 
     def stop_listening(self):
         """Méthode pour arrêter l'écoute."""
@@ -274,10 +224,6 @@ class AudioClassifier:
         """Méthode pour reprendre l'écoute."""
         self._stop_listening.clear()
 
-    #    def _callback(self, label, score):
-    #        self._queue.put((label, score))
-    #        return True
-    
     def handle_results(self, label, score):
         label_, score_ = str(label), float(score)
         print('CALLBACK: ', label_, '=>', score_)
