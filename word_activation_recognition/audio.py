@@ -8,12 +8,12 @@ import numpy as np
 import threading
 import re
 import pyaudio
-import ring_buffer
+from . import ring_buffer
 from tflite_support import metadata
 import tflite_runtime.interpreter as tflite
 import librosa
 from multiprocessing import Process
-from activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
+from .activation_defaults import Files_WordRecognition_tflite, labels_activation_phrase
 
 
 def _associated_labels_file(metadata_json):
