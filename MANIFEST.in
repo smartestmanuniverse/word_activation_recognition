@@ -1,0 +1,2 @@
+include word_activation_recognition/models/*.tflite
+include word_activation_recognition/labels/*.txt
